@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from dataclasses import asdict
 
 from src.agent import ResearchAgent, ResearchEvent
-from src.config import HOST, PORT
+from src.config import HOST, PORT, GOOGLE_API_KEY
 
 # ── Logging ───────────────────────────────────────────────
 logging.basicConfig(
@@ -28,6 +28,16 @@ app = FastAPI(
     title="Deep Research Agent",
     description="AI-powered multi-source research agent",
     version="1.0.0",
+)
+
+# Add CORS middleware for security
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Serve static files
@@ -54,8 +64,14 @@ async def research_page():
 
 @app.get("/api/health")
 async def health():
-    """Health check endpoint."""
-    return {"status": "ok", "version": "1.0.0"}
+    """Health check endpoint with API key validation."""
+    api_key_configured = bool(GOOGLE_API_KEY and GOOGLE_API_KEY != "your_api_key_here")
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "api_key_configured": api_key_configured,
+        "ready": api_key_configured
+    }
 
 
 # ── WebSocket Research Endpoint ───────────────────────────
@@ -71,13 +87,44 @@ async def websocket_research(websocket: WebSocket):
     logger.info("WebSocket connected")
 
     try:
+        # Check API key first
+        if not GOOGLE_API_KEY or GOOGLE_API_KEY == "your_api_key_here":
+            await websocket.send_json({
+                "event_type": "error",
+                "message": "Google API key not configured. Please set GOOGLE_API_KEY in your .env file."
+            })
+            await websocket.close()
+            return
+        
         # Wait for the research query
         raw = await websocket.receive_text()
-        payload = json.loads(raw)
+        
+        # Validate JSON payload
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            await websocket.send_json({
+                "event_type": "error",
+                "message": "Invalid JSON format in request"
+            })
+            await websocket.close()
+            return
+        
         query = payload.get("query", "").strip()
 
+        # Validate query
         if not query:
             await websocket.send_json({"event_type": "error", "message": "No query provided"})
+            await websocket.close()
+            return
+        
+        if len(query) < 5:
+            await websocket.send_json({"event_type": "error", "message": "Query too short. Please provide a more detailed question."})
+            await websocket.close()
+            return
+        
+        if len(query) > 500:
+            await websocket.send_json({"event_type": "error", "message": "Query too long. Please keep it under 500 characters."})
             await websocket.close()
             return
 
@@ -125,10 +172,28 @@ async def websocket_research(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
+        try:
+            await websocket.send_json({"event_type": "error", "message": "Invalid JSON in research results"})
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
+        error_msg = str(e)
+        
+        # Provide user-friendly error messages
+        if "api key" in error_msg.lower() or "invalid" in error_msg.lower():
+            user_msg = "API key error. Please check your Google API key configuration."
+        elif "rate" in error_msg.lower() or "quota" in error_msg.lower():
+            user_msg = "Rate limit exceeded. Please wait a moment and try again."
+        elif "timeout" in error_msg.lower():
+            user_msg = "Request timed out. The query might be too complex. Try simplifying it."
+        else:
+            user_msg = f"An error occurred during research: {error_msg}"
+        
         try:
-            await websocket.send_json({"event_type": "error", "message": str(e)})
+            await websocket.send_json({"event_type": "error", "message": user_msg})
         except Exception:
             pass
     finally:

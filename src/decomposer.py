@@ -4,6 +4,7 @@ and generates follow-up questions based on research gaps.
 """
 import json
 import logging
+import time
 from typing import List
 
 from google import genai
@@ -15,10 +16,55 @@ logger = logging.getLogger(__name__)
 _client = None
 
 def _get_client():
+    """Get or create the Gemini API client."""
     global _client
     if _client is None:
         _client = genai.Client(api_key=GOOGLE_API_KEY)
     return _client
+
+def _call_with_retry(func, max_retries=3, initial_delay=1.0):
+    """
+    Call a function with exponential backoff retry logic.
+    
+    Args:
+        func: Function to call
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay in seconds
+    
+    Returns:
+        Result from the function call
+    
+    Raises:
+        Exception: If all retries fail
+    """
+    delay = initial_delay
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            last_exception = e
+            error_msg = str(e).lower()
+            
+            # Check if it's a rate limit or transient error
+            if "rate" in error_msg or "quota" in error_msg or "429" in error_msg:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Rate limit hit, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
+                    continue
+            elif "500" in error_msg or "503" in error_msg or "timeout" in error_msg:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Transient error, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    delay *= 1.5
+                    continue
+            
+            # For other errors, fail immediately
+            raise e
+    
+    raise last_exception
 
 DECOMPOSE_PROMPT = """You are a research strategist. Given a complex research question, break it down into {max_queries} specific, searchable sub-queries that together will provide a comprehensive answer.
 
@@ -53,42 +99,50 @@ class QueryDecomposer:
     """Decomposes complex queries into searchable sub-queries."""
 
     async def decompose(self, query: str, max_queries: int = MAX_SUB_QUERIES) -> List[str]:
-        """Break a complex question into targeted sub-queries."""
+        """Break a complex question into targeted sub-queries with retry logic."""
         logger.info(f"Decomposing query: '{query}'")
         try:
             prompt = DECOMPOSE_PROMPT.format(query=query, max_queries=max_queries)
-            response = _get_client().models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-            )
+            
+            def api_call():
+                return _get_client().models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                )
+            
+            response = _call_with_retry(api_call)
             text = response.text.strip()
             # Parse JSON array from response
             sub_queries = self._parse_json_array(text)
             logger.info(f"Generated {len(sub_queries)} sub-queries")
             return sub_queries[:max_queries]
         except Exception as e:
-            logger.error(f"Query decomposition failed: {e}")
+            logger.error(f"Query decomposition failed after retries: {e}")
             # Fallback: return the original query
             return [query]
 
     async def generate_followups(
         self, query: str, findings: str, max_queries: int = 3
     ) -> List[str]:
-        """Generate follow-up questions based on current findings."""
+        """Generate follow-up questions based on current findings with retry logic."""
         logger.info("Generating follow-up questions")
         try:
             prompt = FOLLOWUP_PROMPT.format(
                 query=query, findings=findings[:3000], max_queries=max_queries
             )
-            response = _get_client().models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-            )
+            
+            def api_call():
+                return _get_client().models.generate_content(
+                    model=MODEL_NAME,
+                    contents=prompt,
+                )
+            
+            response = _call_with_retry(api_call)
             text = response.text.strip()
             followups = self._parse_json_array(text)
             return followups[:max_queries]
         except Exception as e:
-            logger.error(f"Follow-up generation failed: {e}")
+            logger.error(f"Follow-up generation failed after retries: {e}")
             return []
 
     @staticmethod
