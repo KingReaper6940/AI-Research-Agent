@@ -4,6 +4,8 @@
  */
 
 let rawMarkdown = '';
+let currentWebSocket = null;
+let currentQuery = '';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Get query from URL params
@@ -24,17 +26,23 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-function startResearch(query) {
+function startResearch(query, isRetry = false) {
+    currentQuery = query;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/research`;
     const ws = new WebSocket(wsUrl);
+    currentWebSocket = ws;
     const startTime = Date.now();
     let sourceCount = 0;
 
     ws.onopen = () => {
         console.log('WebSocket connected');
         ws.send(JSON.stringify({ query }));
-        addTimelineEvent('status', 'Connected. Starting research...', startTime);
+        if (!isRetry) {
+            addTimelineEvent('status', 'Connected. Starting research...', startTime);
+        } else {
+            addTimelineEvent('status', 'Retrying... Connected...', startTime);
+        }
     };
 
     ws.onmessage = (event) => {
@@ -44,12 +52,17 @@ function startResearch(query) {
 
     ws.onerror = (error) => {
         console.error('WebSocket error:', error);
-        addTimelineEvent('error', 'Connection error. Please make sure the server is running.', Date.now());
-        updateStatus('Error', false);
+        addTimelineEvent('error', 'Connection error. Check that the server is running and your API key is configured.', Date.now());
+        updateStatus('Connection Error', false);
+        showRetryButton();
     };
 
-    ws.onclose = () => {
-        console.log('WebSocket closed');
+    ws.onclose = (event) => {
+        console.log('WebSocket closed', event.code, event.reason);
+        if (!event.wasClean && event.code !== 1000) {
+            addTimelineEvent('error', `Connection closed unexpectedly (code: ${event.code})`, Date.now());
+            showRetryButton();
+        }
     };
 }
 
@@ -209,4 +222,37 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+
+function showRetryButton() {
+    // Display a retry button after connection or research failure.
+    const existingBtn = document.getElementById('retryBtn');
+    if (existingBtn) return; // Already showing
+
+    const header = document.getElementById('researchHeader');
+    const retryBtn = document.createElement('button');
+    retryBtn.id = 'retryBtn';
+    retryBtn.className = 'action-btn';
+    retryBtn.style.marginTop = '16px';
+    retryBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+        </svg>
+        Retry Research
+    `;
+    retryBtn.onclick = () => {
+        // Clear previous results
+        document.getElementById('timeline').innerHTML = '';
+        document.getElementById('sourcesGrid').innerHTML = '';
+        document.getElementById('sourceCount').textContent = '0';
+        document.getElementById('reportSection').style.display = 'none';
+        retryBtn.remove();
+
+        // Restart research
+        updateStatus('Retrying...', true);
+        startResearch(currentQuery, true);
+    };
+    header.appendChild(retryBtn);
 }
