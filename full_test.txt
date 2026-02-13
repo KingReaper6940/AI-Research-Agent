@@ -1,0 +1,31 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\vrishn viswa\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\vrishn viswa\Documents\GitHub\AI-Research-Agent
+configfile: pytest.ini
+plugins: anyio-4.11.0, asyncio-1.3.0, cov-7.0.0, mock-3.15.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 38 items
+
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_high_credibility PASSED [  2%]
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_medium_credibility PASSED [  5%]
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_low_credibility PASSED [  7%]
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_unknown_domain PASSED [ 10%]
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_edu_domains PASSED [ 13%]
+tests/test_credibility.py::TestCredibilityScorer::test_domain_score_gov_domains PASSED [ 15%]
+tests/test_credibility.py::TestCredibilityScorer::test_source_type_scores PASSED [ 18%]
+tests/test_credibility.py::TestCredibilityScorer::test_score_academic_source PASSED [ 21%]
+tests/test_credibility.py::TestCredibilityScorer::test_score_web_source PASSED [ 23%]
+tests/test_credibility.py::TestCredibilityScorer::test_content_quality_long_content PASSED [ 26%]
+tests/test_credibility.py::TestCredibilityScorer::test_content_quality_data_markers PASSED [ 28%]
+tests/test_credibility.py::TestCredibilityScorer::test_score_all_filters_low_credibility FAILED [ 31%]
+
+================================== FAILURES ===================================
+E   AssertionError: assert 5 == 3
+     +  where 5 = len([SearchResult(title='Result 0', url='https://site0.com', snippet='snippet', content='content', source_type='web', domain='site0.com', credibility_score=0.5), SearchResult(title='Result 1', url='https://site1.com', snippet='snippet', content='content', source_type='web', domain='site1.com', credibility_score=0.5), SearchResult(title='Result 2', url='https://site2.com', snippet='snippet', content='content', source_type='web', domain='site2.com', credibility_score=0.5), SearchResult(title='Result 3', url='https://site3.com', snippet='snippet', content='content', source_type='web', domain='site3.com', credibility_score=0.5), SearchResult(title='Result 4', url='https://site4.com', snippet='snippet', content='content', source_type='web', domain='site4.com', credibility_score=0.5)])
+C:\Users\vrishn viswa\Documents\GitHub\AI-Research-Agent\tests\test_credibility.py:161: AssertionError: assert 5 == 3
+=========================== short test summary info ===========================
+FAILED tests/test_credibility.py::TestCredibilityScorer::test_score_all_filters_low_credibility - AssertionError: assert 5 == 3
+ +  where 5 = len([SearchResult(title='Result 0', url='https://site0.com', snippet='snippet', content='content', source_type='web', domain='site0.com', credibility_score=0.5), SearchResult(title='Result 1', url='https://site1.com', snippet='snippet', content='content', source_type='web', domain='site1.com', credibility_score=0.5), SearchResult(title='Result 2', url='https://site2.com', snippet='snippet', content='content', source_type='web', domain='site2.com', credibility_score=0.5), SearchResult(title='Result 3', url='https://site3.com', snippet='snippet', content='content', source_type='web', domain='site3.com', credibility_score=0.5), SearchResult(title='Result 4', url='https://site4.com', snippet='snippet', content='content', source_type='web', domain='site4.com', credibility_score=0.5)])
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 1 failed, 11 passed in 0.15s =========================
